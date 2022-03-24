@@ -1,10 +1,7 @@
-import operator
-
 import requests
 from bs4 import BeautifulSoup
 import time
 from concurrent.futures import ThreadPoolExecutor
-
 import pandas as pd
 
 
@@ -46,9 +43,8 @@ def extract_features(page):
     url = 'https://news.ycombinator.com/'
 
     resp = requests.get(f'{url}{page}', headers=headers, timeout=10)
-    output_list = []
 
-    max_thread = 30
+    max_thread = 32
 
     if resp.status_code == 200:
         soup = BeautifulSoup(resp.content, 'html5lib')
@@ -60,26 +56,26 @@ def extract_features(page):
         with ThreadPoolExecutor(max_workers=threads) as executor:
             output_list = executor.map(__extract_features, tr_blocks, smaller_tr_blocks)
 
-        # for index, tr in enumerate(tr_blocks):
-        #     output_list.append(__extract_features(tr, smaller_tr_blocks[index]))
+        output_df = pd.DataFrame(output_list)
 
-        return output_list
+        return output_df
+
+
+def run_parser(required_pages):
+    threads = len(required_pages)
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        collated_output_list = executor.map(extract_features, required_pages)
+
+    gens = [internal_gen for internal_gen in collated_output_list]
+    output_df = pd.concat(gen for gen in gens)
+
+    output_df = output_df.sort_values(['Points', 'rank'], ascending=[False, True])
+    return output_df
 
 
 if __name__ == '__main__':
     required_pages = ['news', 'ask', 'show']
-    collated_output_list = []
 
-    for page in required_pages:
-        collated_output_list += extract_features(page)
-        time.sleep(0.25)
-
-    collated_output_list.sort(key=operator.itemgetter('rank'))
-    collated_output_list.sort(key=operator.itemgetter('Points'), reverse=True)
-
-    keys = list(collated_output_list[0].keys())
-    # print(keys)
-
-    output_df = pd.DataFrame(collated_output_list)
-    output_df.drop(['rank'], axis=1, inplace=True)
-    output_df.to_csv('hacker_news2.csv')
+    final_output = run_parser(required_pages)
+    # final_output.drop(['rank'], axis=1, inplace=True)
+    final_output.to_csv('hacker_news3.csv', index=False)
